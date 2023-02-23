@@ -17,8 +17,8 @@ from tensorflow.keras.applications.mobilenet import MobileNet, preprocess_input
 class model_maker:
     nn_input_shape=[32,32]
     siamese=None
-    epoch=5
-    batch=10
+    epoch=1
+    batch=64
 
     def __init__(self):
 
@@ -56,7 +56,9 @@ class model_maker:
         # # Define the output layer
         # output_layer = layers.Dense(1, activation="sigmoid")(normal_layer)
         nn_concat=layers.Dense(64,activation='relu')(layers.concatenate([tower_1,tower_2]))
-        output_layer=layers.Dense(1,activation='sigmoid')(nn_concat)
+        # output_layer=layers.Dense(1,activation='sigmoid')(nn_concat)
+
+        output_layer=layers.Dense(4,activation='sigmoid')(nn_concat)
         # Define the Siamese model
         siamese = keras.Model(inputs=[input_1, input_2], outputs=output_layer)
         siamese.compile(loss=tf.keras.losses.BinaryCrossentropy(from_logits=False), optimizer="RMSprop", metrics=["accuracy"])
@@ -133,7 +135,7 @@ class model_maker:
             cv2.waitKey(0)
             cv2.destroyAllWindows()
            
-    def train(self,weigths_save_path,model_save_path,data_holder):
+    def train(self,weigths_save_path,model_save_path,x,y):
 
         log_dir = "runs/train" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
@@ -144,8 +146,8 @@ class model_maker:
         """
         cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=weigths_save_path, save_weights_only=True)
         history = self.siamese.fit(
-            [data_holder.x_train_1_2[0], data_holder.x_train_1_2[1]],
-            data_holder.labels_train,
+            x,
+            y,
             # validation_data=([x_val_1, x_val_2], labels_val),
             batch_size=self.batch,
             epochs=self.epoch,
