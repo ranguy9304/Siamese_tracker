@@ -13,21 +13,45 @@ from tensorflow.keras import layers
 import matplotlib.pyplot as plt
 import cv2
 import datetime
-from tensorflow.keras.applications.mobilenet import MobileNet, preprocess_input
+from tensorflow.keras.applications import MobileNetV3Small
+
+class ConfusionMatrixCallback(tf.keras.callbacks.Callback):
+    def on_epoch_end(self, epoch, logs=None):
+        # Compute the confusion matrix on the validation set
+        val_preds = self.model.predict(self.train_data[:2])
+        val_cm = tf.math.confusion_matrix(self.train_data[2], val_preds)
+        
+        # Extract true positives, true negatives, false positives, and false negatives
+        tp = val_cm[1, 1].numpy()
+        tn = val_cm[0, 0].numpy()
+        fp = val_cm[0, 1].numpy()
+        fn = val_cm[1, 0].numpy()
+        
+        # Print the confusion matrix and evaluation metrics
+        print("Confusion matrix:")
+        print(val_cm.numpy())
+        print("True positives:", tp)
+        print("True negatives:", tn)
+        print("False positives:", fp)
+        print("False negatives:", fn)
+
 class model_maker:
     nn_input_shape=[32,32]
     siamese=None
     epoch=1
-    batch=64
+    batch=128
 
     def __init__(self):
 
         # Load the MobileNet model
-        mobilenet = MobileNet(
+        mobilenet = MobileNetV3Small(
             include_top=False,
             weights="imagenet",
             input_shape=(self.nn_input_shape[0], self.nn_input_shape[1], 3),
-            pooling='avg'
+            # input_tensor = (None, self.nn_input_shape[0], self.nn_input_shape[1], 3),
+            pooling='max',
+            classifier_activation=None,
+            include_preprocessing = True
         )
 
         # Define the input layers
@@ -35,33 +59,21 @@ class model_maker:
         input_2 = layers.Input((self.nn_input_shape[0], self.nn_input_shape[1], 3))
 
         # Define the embedding network
-        embedding_network = keras.models.Sequential([
-            layers.Lambda(preprocess_input, input_shape=(self.nn_input_shape[0], self.nn_input_shape[1], 3)),
-            mobilenet,
-            layers.Flatten(),
-            tf.keras.layers.BatchNormalization(),
-            layers.Dense(128, activation='relu'),
-        ])
-
-        # As mentioned above, Siamese Network share weights between
-        # tower networks (sister networks). To allow this, we will use
-        # same embedding network for both tower networks.
-        tower_1 = embedding_network(input_1)
-        tower_2 = embedding_network(input_2)
-
-        # # Define the distance metric layer
-        # merge_layer = layers.Lambda(euclidean_distance)([tower_1, tower_2])
-        # normal_layer = tf.keras.layers.BatchNormalization()(merge_layer)
-
-        # # Define the output layer
-        # output_layer = layers.Dense(1, activation="sigmoid")(normal_layer)
-        nn_concat=layers.Dense(64,activation='relu')(layers.concatenate([tower_1,tower_2]))
-        # output_layer=layers.Dense(1,activation='sigmoid')(nn_concat)
+        mobilenet1 = mobilenet(input_1)
+        mobilenet2 = mobilenet(input_2)
+        flattened1 = layers.Flatten()(mobilenet1)
+        flattened2 = layers.Flatten()(mobilenet2)
+        nn1 = layers.Dense(128, activation="relu")(flattened1)
+        nn2 = layers.Dense(128, activation="relu")(flattened2)
+        # Define the output layer
+        nn_concat=layers.Dense(64,activation='relu')(layers.concatenate([nn1,nn2]))
 
         output_layer=layers.Dense(4,activation='sigmoid')(nn_concat)
         # Define the Siamese model
         siamese = keras.Model(inputs=[input_1, input_2], outputs=output_layer)
-        siamese.compile(loss=tf.keras.losses.BinaryCrossentropy(from_logits=False), optimizer="RMSprop", metrics=["accuracy"])
+        siamese.summary()
+        adam = tf.keras.optimizers.Adam(learning_rate=1)
+        siamese.compile(loss=tf.keras.losses.BinaryCrossentropy(from_logits=False), optimizer=adam, metrics=["accuracy"])
         self.siamese=siamese
     def load_model_weights(self,path):
         self.siamese.load_weights(path)
@@ -139,21 +151,21 @@ class model_maker:
 
         log_dir = "runs/train" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
-
+        confusion_matrix_callback = ConfusionMatrixCallback()
 
         """
         ## Train the model
         """
         cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=weigths_save_path, save_weights_only=True)
         history = self.siamese.fit(
-            x,
+            [x[:,0],x[:,1]],
             y,
             # validation_data=([x_val_1, x_val_2], labels_val),
             batch_size=self.batch,
             epochs=self.epoch,
-            callbacks=[cp_callback,tensorboard_callback]
+            # callbacks=[confusion_matrix_callback]
         )
-        self.siamese.save(model_save_path)
+        # self.siamese.save(model_save_path)
 
 
 

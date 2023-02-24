@@ -1,97 +1,76 @@
-
-# from gc import callbacks
-# import itertools
-# import random
-# import numpy as np
-# import tensorflow as tf
-# from tensorflow import keras
-# from tensorflow.keras import layers
-# import matplotlib.pyplot as plt
-
-# import datetime
-# """
-# ## Hyperparameters
-# """
-
-# epochs = 3
-# batch_size = 64
-# margin = 2# Margin for constrastive loss.
-
-# """
-# ## Load the MNIST dataset
-# """
-
-
-# import os
-# import cv2
-# import numpy as np
-# from sklearn.model_selection import train_test_split
-
-# import model
-
-# siamese=model.model_maker()
-
-
-
-
-# siamese.train('/home/summer/samik/auvsi_perception/siam_keras',"/home/summer/samik/auvsi_perception/siam_keras/sia_color.h5",data_holder=data_holder)
-
-
-
-# results = siamese.evaluate([x_train_1_2[0], x_train_1_2[1]], labels_test)
-# print("test loss, test acc:", results)
-
-
 import os
 import cv2
 import numpy as np
-from siamese import Siamese
+import model
 import random
 from tqdm import tqdm
+from multiprocessing import Pool
+
 # function to compare a,b,c,d of two file names
 def compare_files(file1, file2):
+    vector = []
     values1 = file1.split("_")[:4]
     values2 = file2.split("_")[:4]
-    vector = [int(values1[i] == values2[i]) for i in range(4)]
+    for i in range(0,4):
+        if values1[i] == values2[i]:
+            vector.append(1.0)
+        else:
+            vector.append(0.0)
     return vector
+
+def load_images(crop_name):
+    crop_image1 = cv2.imread(crop_name[0])
+    crop_image1 = cv2.resize(crop_image1,(32,32))
+    crop_image2 = cv2.imread(crop_name[1])
+    crop_image2 = cv2.resize(crop_image2,(32,32))
+    crop_label1 = crop_name[0].split("/")[-1]
+    crop_label2 = crop_name[1].split("/")[-1]
+    return crop_image1,crop_image2, compare_files(crop_label1, crop_label2)
 
 # main function
 def main():
     epochs = 3
-    batch_size = 64
-    main_folder_path = "/path/to/folder/"
+    batch_size = 6400
+    main_folder_path = "C:/Users/divya/Desktop/Blender/ODCL_Synthetic_Data_Generator/cropped/"
     n = 50000 # number of pairs to create at once
-    siamese = Siamese()
+    siamese = model.model_maker()
     x_pairs = []
     y_labels = []
+    crop_images = []
     count = 0
-    files_names=os.listdir(main_folder_path)
+    files_names = os.listdir(main_folder_path)
     len_files=len(files_names)-1
+    files_names = np.random.permutation(files_names)
+    crop_paths = np.array([os.path.join(main_folder_path,crop_name) for crop_name in files_names if crop_name.endswith(".jpg")])
+    if len(crop_paths) % 2 == 0:
+    # Reshape the array into a 3200x2 array
+        crop_paths = crop_paths.reshape((int((len_files+1)/2), 2))
+    else:
+        # Reshape the array into a 3199x2 array
+        crop_paths = crop_paths[:-1].reshape((int(len_files/2), 2))
+
+    # Verify the shape of the new array
+    with Pool() as p:
+        crop_images.append(p.map(load_images, crop_paths))
     pbar = tqdm(total=len_files/2, desc="global_progress", unit="pair")
     while(len_files/2>1 and  epochs >0):
+        temp= False
         if len_files/2<batch_size :
             batch_size=len_files
             epochs = epochs - 1
             temp = True
-        for j in range(0,batch_size):  
-            file_index1 = random.randint(0,len_files)
-            files_names.pop(file_index1)
-            len_files=len_files-1
-            file_index2 = random.randint(0,len_files)
-            files_names.pop(file_index1)
-            len_files=len_files-1
+        for j in range(0,batch_size):
             #load img
-            image1 = cv2.imread(main_folder_path+files_names[file_index1])
-            image2 = cv2.imread(main_folder_path+files_names[file_index2])
-            x_pairs.append((image1, image2))
-            y_labels.append(compare_files(files_names[file_index1], files_names[file_index2]))
+            x_pairs.append([crop_images[0][j][0],crop_images[0][j][1]])
+            y_labels.append(crop_images[0][j][2])
         pbar.update(batch_size)
         if(temp)==True:
             files_names=os.listdir(main_folder_path)
             len_files=len(files_names)-1
-        siamese.train('/home/summer/samik/auvsi_perception/siam_keras', "/home/summer/samik/auvsi_perception/siam_keras/sia_color.h5", np.array(x_pairs), np.array(y_labels))
+        siamese.train('C:/Users/divya/Desktop/ML/ODCL/saimese_tracker/', "C:/Users/divya/Desktop/ML/ODCL/saimese_tracker/", np.array(x_pairs), np.array(y_labels))
         x_pairs = []
         y_labels = []
+        siamese.siamese.save('C:/Users/divya/Desktop/ML/ODCL/saimese_tracker/siamese.h5')
     pbar.close()
 if __name__ == '__main__':
     main()
