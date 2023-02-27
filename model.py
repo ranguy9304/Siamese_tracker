@@ -20,11 +20,15 @@ import tensorflow_addons as tfa
 class model_maker:
     nn_input_shape=[32,32]
     siamese=None
+    mobilenet=None
     epoch=1
     batch=128
 
     def __init__(self):
+        pass
 
+    def load_siamese(self):
+        
         # Load the MobileNet model
         mobilenet = MobileNetV3Small(
             include_top=False,
@@ -63,8 +67,87 @@ class model_maker:
                                                                     optimizer=adam, 
                                                                     metrics=["accuracy",tp,fp,tn,fn])
         self.siamese=siamese
+    
+    def load_mobilenet(self):
+        
+        # Load the MobileNet model
+        mobilenet = MobileNetV3Small(
+            include_top=False,
+            weights="imagenet",
+            input_shape=(self.nn_input_shape[0], self.nn_input_shape[1], 3),
+            # input_tensor = (None, self.nn_input_shape[0], self.nn_input_shape[1], 3),
+            pooling='max',
+            classifier_activation=None,
+            include_preprocessing = True
+        )
+
+        # Define the input layers
+        input = layers.Input((self.nn_input_shape[0], self.nn_input_shape[1], 3))
+
+        # Define the embedding network
+        mobilenet = mobilenet(input)
+        flattened = layers.Flatten()(mobilenet)
+
+        #Shape nn
+        shape_nn_drop = layers.Dropout(0.3)(flattened)
+        shape_nn = layers.Dense(256, activation='relu')(shape_nn_drop)
+        shape_nn_drop_2 = layers.Dropout(0.3)(shape_nn)
+        shape_nn_2 = layers.Dense(64, activation='relu')(shape_nn_drop_2)
+        shape_nn_drop_3 = layers.Dropout(0.2)(shape_nn_2)
+        shape_nn_3 = layers.Dense(14, activation='softmax')(shape_nn_drop_3)
+
+        #letter nn
+        letter_nn_drop = layers.Dropout(0.3)(flattened)
+        letter_nn = layers.Dense(256, activation='relu')(letter_nn_drop)
+        letter_nn_drop_2 = layers.Dropout(0.3)(letter_nn)
+        letter_nn_2 = layers.Dense(64, activation='relu')(letter_nn_drop_2)
+        letter_nn_drop_3 = layers.Dropout(0.2)(letter_nn_2)
+        letter_nn_3 = layers.Dense(36, activation='softmax')(letter_nn_drop_3)
+
+        #shape_colour nn
+        shape_colour_nn_drop = layers.Dropout(0.3)(flattened)
+        shape_colour_nn = layers.Dense(256, activation='relu')(shape_colour_nn_drop)
+        shape_colour_nn_drop_2 = layers.Dropout(0.3)(shape_colour_nn)
+        shape_colour_nn_2 = layers.Dense(64, activation='relu')(shape_colour_nn_drop_2)
+        shape_colour_nn_drop_3 = layers.Dropout(0.2)(shape_colour_nn_2)
+        shape_colour_nn_3 = layers.Dense(10, activation='softmax')(shape_colour_nn_drop_3)
+
+        #letter_colour nn
+        letter_colour_nn_drop = layers.Dropout(0.3)(flattened)
+        letter_colour_nn = layers.Dense(256, activation='relu')(letter_colour_nn_drop)
+        letter_colour_nn_drop_2 = layers.Dropout(0.3)(letter_colour_nn)
+        letter_colour_nn_2 = layers.Dense(64, activation='relu')(letter_colour_nn_drop_2)
+        letter_colour_nn_drop_3 = layers.Dropout(0.2)(letter_colour_nn_2)
+        letter_colour_nn_3 = layers.Dense(10, activation='softmax')(letter_colour_nn_drop_3)
+
+        # Define the output layer
+        # output_layer=
+        # Define the model
+        self.mobilenet = keras.Model(inputs=input, outputs=[shape_nn_3,letter_nn_3,shape_colour_nn_3,letter_colour_nn_3])
+        self.mobilenet.summary()
+        adam = tf.keras.optimizers.Adam()
+        tp,fp,tn,fn=FalsePositives(),FalseNegatives(),TruePositives(),TrueNegatives()
+        self.mobilenet.compile(loss = tf.keras.losses.CategoricalCrossentropy(from_logits= False),
+                                                                    optimizer=adam, 
+                                                                    metrics=["accuracy"])
     def load_model_weights(self,path):
         self.siamese.load_weights(path)
+    def predict_mobilenet(self,path,weights):
+        self.mobilenet.load_weights(weights)
+        image = cv2.imread(path)
+        image = cv2.resize(image,(self.nn_input_shape[0],self.nn_input_shape[1]))
+        pred = self.mobilenet.predict(tf.expand_dims(image,0))
+        print(pred)
+        #add threshold and print prediction
+        shape = np.where(pred[0][0]==max(pred[0][0]))
+        letter = np.where(pred[1][0]==max(pred[1][0]))
+        shape_colour = np.where(pred[2][0]==max(pred[2][0]))
+        letter_colour = np.where(pred[3][0]==max(pred[3][0]))
+        print("shape: ",shape," confidence: ",max(pred[0][0])*100,"%")
+        print("letter: ",letter," confidence: ",max(pred[1][0])*100,"%")
+        print("shape_colour: ",shape_colour," confidence: ",max(pred[2][0])*100,"%")
+        print("letter_colour: ",letter_colour," confidence: ",max(pred[3][0])*100,"%")
+
     def predict(self,path1,path2,type):
         if(type==0):
             print(path1)
@@ -134,8 +217,25 @@ class model_maker:
             cv2.imshow("img2",image2)
             cv2.waitKey(0)
             cv2.destroyAllWindows()
-           
-    def train(self,weigths_save_path,model_save_path,x,y):
+    def train_mobilenet(self,weigths_save_path,model_save_path,x,y):
+        log_dir = "runs/train" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        # tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
+
+        """
+        ## Train the model
+        """
+        # cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=weigths_save_path, save_weights_only=True)
+        self.mobilenet.fit(
+            x,
+            y,
+            # validation_data=([x_val_1, x_val_2], labels_val),
+            batch_size=self.batch,
+            epochs=self.epoch,
+            # callbacks=[confusion_matrix_callback]
+        )
+        # self.siamese.save(model_save_path)
+        # self.siamese.save_weights(weigths_save_path)
+    def train_siamese(self,weigths_save_path,model_save_path,x,y):
 
         log_dir = "runs/train" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         # tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
