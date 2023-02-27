@@ -14,26 +14,8 @@ import matplotlib.pyplot as plt
 import cv2
 import datetime
 from tensorflow.keras.applications import MobileNetV3Small
-
-class ConfusionMatrixCallback(tf.keras.callbacks.Callback):
-    def on_epoch_end(self, epoch, logs=None):
-        # Compute the confusion matrix on the validation set
-        val_preds = self.model.predict(self.train_data[:2])
-        val_cm = tf.math.confusion_matrix(self.train_data[2], val_preds)
-        
-        # Extract true positives, true negatives, false positives, and false negatives
-        tp = val_cm[1, 1].numpy()
-        tn = val_cm[0, 0].numpy()
-        fp = val_cm[0, 1].numpy()
-        fn = val_cm[1, 0].numpy()
-        
-        # Print the confusion matrix and evaluation metrics
-        print("Confusion matrix:")
-        print(val_cm.numpy())
-        print("True positives:", tp)
-        print("True negatives:", tn)
-        print("False positives:", fp)
-        print("False negatives:", fn)
+from tensorflow.keras.metrics import FalseNegatives, FalsePositives, TrueNegatives, TruePositives
+import tensorflow_addons as tfa
 
 class model_maker:
     nn_input_shape=[32,32]
@@ -72,8 +54,14 @@ class model_maker:
         # Define the Siamese model
         siamese = keras.Model(inputs=[input_1, input_2], outputs=output_layer)
         siamese.summary()
-        adam = tf.keras.optimizers.Adam(learning_rate=1)
-        siamese.compile(loss=tf.keras.losses.BinaryCrossentropy(from_logits=False), optimizer=adam, metrics=["accuracy"])
+        adam = tf.keras.optimizers.Adam()
+        tp,fp,tn,fn=FalsePositives(),FalseNegatives(),TruePositives(),TrueNegatives()
+        siamese.compile(loss = tfa.losses.SigmoidFocalCrossEntropy(from_logits= False,
+                                                                    alpha= 0.25,
+                                                                    gamma= 2.0,
+                                                                    name = 'sigmoid_focal_crossentropy'), 
+                                                                    optimizer=adam, 
+                                                                    metrics=["accuracy",tp,fp,tn,fn])
         self.siamese=siamese
     def load_model_weights(self,path):
         self.siamese.load_weights(path)
@@ -113,7 +101,7 @@ class model_maker:
 
 
             for filename in os.listdir(path1):
-    # check if the file is an image
+            # check if the file is an image
                 if filename.endswith('.jpg') or filename.endswith('.png'):
                     # open the image file
                     image_path = os.path.join(path1, filename)
@@ -150,14 +138,13 @@ class model_maker:
     def train(self,weigths_save_path,model_save_path,x,y):
 
         log_dir = "runs/train" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-        tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
-        confusion_matrix_callback = ConfusionMatrixCallback()
+        # tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
 
         """
         ## Train the model
         """
-        cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=weigths_save_path, save_weights_only=True)
-        history = self.siamese.fit(
+        # cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=weigths_save_path, save_weights_only=True)
+        self.siamese.fit(
             [x[:,0],x[:,1]],
             y,
             # validation_data=([x_val_1, x_val_2], labels_val),
@@ -166,6 +153,3 @@ class model_maker:
             # callbacks=[confusion_matrix_callback]
         )
         # self.siamese.save(model_save_path)
-
-
-
