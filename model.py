@@ -139,10 +139,18 @@ class model_maker:
         pred = self.mobilenet.predict(tf.expand_dims(image,0))
         print(pred)
         #add threshold and print prediction
-        shape = np.where(pred[0][0]==max(pred[0][0]))
-        letter = np.where(pred[1][0]==max(pred[1][0]))
-        shape_colour = np.where(pred[2][0]==max(pred[2][0]))
-        letter_colour = np.where(pred[3][0]==max(pred[3][0]))
+        whitelist_shape = ["CIRCLE","SEMI CIRCLE","QUARTER CIRCLE","TRIANGLE",
+                            "SQUARE", "DIAMOND","TRAPEZOID","RECTANGLE",
+                            "PENTAGON","HEXAGON","HEPTAGON",
+                            "OCTAGON","STAR","CROSS"]
+        whitelist_letter = ["0","1","2","3","4","5","6","7","8",
+                            "9","A","B","C","D","E","F","G","H","I",
+                            "J","K","L","M","N","O","P","Q","R","S","T","U","V","W","X","Y","Z"]
+        whitelist_color = ["white","gray","black","red","blue","green","yellow","orange","brown","purple"]
+        shape = whitelist_shape[np.where(pred[0][0]==max(pred[0][0]))[0][0]]
+        letter = whitelist_letter[np.where(pred[1][0]==max(pred[1][0]))[0][0]]
+        shape_colour = whitelist_color[np.where(pred[2][0]==max(pred[2][0]))[0][0]]
+        letter_colour = whitelist_color[np.where(pred[3][0]==max(pred[3][0]))[0][0]]
         print("shape: ",shape," confidence: ",max(pred[0][0])*100,"%")
         print("letter: ",letter," confidence: ",max(pred[1][0])*100,"%")
         print("shape_colour: ",shape_colour," confidence: ",max(pred[2][0])*100,"%")
