@@ -16,6 +16,13 @@ import datetime
 from tensorflow.keras.applications import MobileNetV3Small
 from tensorflow.keras.metrics import FalseNegatives, FalsePositives, TrueNegatives, TruePositives
 import tensorflow_addons as tfa
+import gc
+tf.config.experimental.set_memory_growth(
+    tf.config.experimental.list_physical_devices('GPU')[0], True)
+class ClearSessionCallback(tf.keras.callbacks.Callback):
+    def on_epoch_end(self, epoch, logs=None):
+        tf.keras.backend.clear_session()
+        gc.collect()
 
 class model_maker:
     nn_input_shape=[32,32]
@@ -232,6 +239,7 @@ class model_maker:
         """
         ## Train the model
         """
+        self.mobilenet.reset_states()
         # cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=weigths_save_path, save_weights_only=True)
         self.mobilenet.fit(
             x,
@@ -258,6 +266,7 @@ class model_maker:
             # validation_data=([x_val_1, x_val_2], labels_val),
             batch_size=self.batch,
             epochs=self.epoch,
-            # callbacks=[confusion_matrix_callback]
+            # callbacks=ClearMemory()
+            callbacks=[ClearSessionCallback()]
         )
         # self.siamese.save(model_save_path)
